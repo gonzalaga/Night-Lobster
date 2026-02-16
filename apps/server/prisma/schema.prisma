@@ -1,0 +1,342 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GoalHorizon {
+  short
+  medium
+  long
+}
+
+enum MissionStatus {
+  draft
+  scheduled
+  queued
+  running
+  completed
+  failed
+}
+
+enum RunStatus {
+  queued
+  running
+  completed
+  partial
+  failed
+}
+
+enum RunStage {
+  intake
+  plan
+  execute
+  synthesize
+  handoff
+}
+
+enum MemoryType {
+  episodic
+  semantic
+  strategic
+}
+
+enum MemoryStatus {
+  active
+  superseded
+  contested
+  archived
+}
+
+enum AuthorityLevel {
+  suggest
+  recommend
+  assert
+  autonomous_limited
+}
+
+enum ExpertiseStatus {
+  active
+  degraded
+  cold_start
+}
+
+enum HandoffProvider {
+  chatgpt
+  codex
+  other
+}
+
+enum HandoffTargetMode {
+  night_run
+  chat
+}
+
+enum EvaluationCaptureStatus {
+  pending
+  submitted
+  timeout
+}
+
+enum RecommendationOutcomeStatus {
+  pending
+  accepted
+  modified
+  rejected
+  deferred
+}
+
+model Project {
+  id         String    @id @default(cuid())
+  name       String
+  purpose    String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  goals      Goal[]
+  missions   Mission[]
+  handoffs   Handoff[]
+  runs       Run[]
+  memory     MemoryItem[]
+  expertise  ExpertiseScore[]
+  workItems  WorkItem[]
+}
+
+model Goal {
+  id         String      @id @default(cuid())
+  projectId  String
+  horizon    GoalHorizon
+  statement  String
+  metric     String?
+  targetDate DateTime?
+  priority   Int         @default(3)
+  status     String      @default("active")
+  version    Int         @default(1)
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model Mission {
+  id                  String        @id @default(cuid())
+  projectId           String
+  title               String
+  objective           String
+  constraintsJson     Json
+  successCriteriaJson Json
+  status              MissionStatus @default(draft)
+  scheduledFor        DateTime?
+  project             Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runs                Run[]
+  handoffs            Handoff[]
+  links               MissionWorkLink[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+}
+
+model Run {
+  id               String              @id @default(cuid())
+  projectId        String
+  missionId        String
+  handoffId        String?
+  status           RunStatus           @default(queued)
+  timeBudgetSec    Int
+  tokenBudget      Int
+  scoreJson        Json?
+  runContractJson  Json
+  startedAt        DateTime?
+  endedAt          DateTime?
+  project          Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mission          Mission             @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  handoff          Handoff?            @relation(fields: [handoffId], references: [id], onDelete: SetNull)
+  steps            RunStep[]
+  decisions        Decision[]
+  reports          RunReport[]
+  evaluations      RunEvaluation[]
+  recommendationOutcomes RecommendationOutcome[]
+  artifacts        Artifact[]
+  evidenceItems    EvidenceItem[]
+  toolInvocations  ToolInvocation[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+}
+
+model RunStep {
+  id            String    @id @default(cuid())
+  runId         String
+  stage         RunStage
+  action        String
+  artifactRef   String?
+  resultSummary String?
+  confidence    Float?
+  timestamp     DateTime  @default(now())
+  run           Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model MemoryItem {
+  id              String       @id @default(cuid())
+  projectId       String
+  type            MemoryType
+  status          MemoryStatus @default(active)
+  content         String
+  confidence      Float?
+  tagsJson        Json?
+  evidenceRefsJson Json?
+  supersedesId    String?
+  sourceRunId     String?
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+}
+
+model ExpertiseScore {
+  id                String         @id @default(cuid())
+  projectId         String
+  domainKey         String
+  competenceScore   Float
+  calibrationScore  Float
+  coverageScore     Float
+  evidenceCount30d  Int            @default(0)
+  authorityLevel    AuthorityLevel @default(suggest)
+  status            ExpertiseStatus @default(cold_start)
+  lastEvaluatedAt   DateTime?
+  project           Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, domainKey])
+}
+
+model Decision {
+  id              String    @id @default(cuid())
+  projectId       String
+  runId           String
+  question        String
+  optionsJson     Json?
+  recommendation  String?
+  rationale       String?
+  requiredBy      DateTime?
+  status          String    @default("open")
+  answerJson      Json?
+  answeredAt      DateTime?
+  run             Run       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+}
+
+model Handoff {
+  id             String            @id @default(cuid())
+  projectId      String
+  threadId       String
+  missionId      String
+  sourceProvider HandoffProvider
+  targetMode     HandoffTargetMode
+  envelopeJson   Json
+  status         String            @default("created")
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mission        Mission           @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  runs           Run[]
+  reports        RunReport[]
+  createdAt      DateTime          @default(now())
+}
+
+model RunReport {
+  id          String   @id @default(cuid())
+  runId       String
+  projectId   String
+  handoffId   String
+  reportJson  Json
+  summaryText String
+  run         Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  handoff     Handoff  @relation(fields: [handoffId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+model Artifact {
+  id         String   @id @default(cuid())
+  runId      String
+  projectId  String
+  type       String
+  title      String
+  format     String
+  storageUri String
+  summary    String?
+  run        Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model EvidenceItem {
+  id           String   @id @default(cuid())
+  runId        String
+  projectId    String
+  kind         String
+  citation     String
+  retrievedAt  DateTime @default(now())
+  qualityScore Float?
+  excerpt      String?
+  notes        String?
+  run          Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model ToolInvocation {
+  id               String   @id @default(cuid())
+  runId            String
+  stepId           String?
+  toolName         String
+  requestJson      Json
+  responseRef      String?
+  status           String
+  errorText        String?
+  costEstimateJson Json?
+  startedAt        DateTime @default(now())
+  endedAt          DateTime?
+  run              Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model RunEvaluation {
+  id                 String                  @id @default(cuid())
+  runId              String
+  projectId          String
+  captureStatus      EvaluationCaptureStatus @default(pending)
+  usefulnessRating   Int?
+  brevityRating      Int?
+  trustRating        Int?
+  notes              String?
+  flaggedIssueTypesJson Json?
+  dueAt              DateTime?
+  run                Run                     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                @default(now())
+}
+
+model RecommendationOutcome {
+  id               String                      @id @default(cuid())
+  runId            String
+  recommendationId String
+  outcome          RecommendationOutcomeStatus @default(pending)
+  reason           String?
+  run              Run                         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt        DateTime                    @default(now())
+}
+
+model WorkItem {
+  id            String   @id @default(cuid())
+  projectId     String
+  title         String
+  type          String
+  status        String   @default("backlog")
+  priority      Int      @default(3)
+  goalLinksJson Json?
+  linksJson     Json?
+  nextStep      String?
+  owner         String   @default("agent")
+  updatedAt     DateTime @updatedAt
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  missions      MissionWorkLink[]
+}
+
+model MissionWorkLink {
+  missionId  String
+  workItemId String
+  mission    Mission  @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@id([missionId, workItemId])
+}

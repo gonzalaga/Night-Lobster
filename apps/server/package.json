@@ -1,0 +1,31 @@
+{
+  "name": "@nightlobster/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:worker": "tsx watch src/worker/run-worker.ts",
+    "build": "npm run build -w @nightlobster/contracts && tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "start:worker": "node dist/worker/run-worker.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@nightlobster/contracts": "0.1.0",
+    "@prisma/client": "^6.3.1",
+    "bullmq": "^5.40.2",
+    "fastify": "^5.2.1",
+    "ioredis": "^5.4.2",
+    "pino-pretty": "^13.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

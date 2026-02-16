@@ -1,0 +1,22 @@
+{
+  "name": "night-lobster",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @nightlobster/server\" \"npm run dev -w @nightlobster/web\"",
+    "dev:server": "npm run dev -w @nightlobster/server",
+    "dev:web": "npm run dev -w @nightlobster/web",
+    "dev:worker": "npm run dev:worker -w @nightlobster/server",
+    "build": "npm run build -ws --if-present",
+    "lint": "npm run lint -ws --if-present",
+    "test": "npm run test -ws --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}
