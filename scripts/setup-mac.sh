@@ -2,6 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SERVICE_SCRIPT="$ROOT_DIR/scripts/nightlobster.sh"
+STATE_DIR="$ROOT_DIR/.nightlobster"
+INSTALL_STATE_FILE="$STATE_DIR/install-state.env"
+CURRENT_SETUP_SCRIPT_VERSION="1"
+INSTALL_MODE="fresh"
+PREVIOUS_SETUP_VERSION="none"
+PREVIOUS_INSTALLED_AT=""
 
 log() {
   printf "[setup] %s\n" "$1"
@@ -18,6 +25,31 @@ fail() {
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+quote() {
+  printf '%q' "$1"
+}
+
+detect_install_mode() {
+  if [[ -f "$INSTALL_STATE_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$INSTALL_STATE_FILE" || true
+    PREVIOUS_SETUP_VERSION="${SETUP_SCRIPT_VERSION:-unknown}"
+    PREVIOUS_INSTALLED_AT="${INSTALLED_AT:-}"
+    INSTALL_MODE="update"
+    log "Detected previous install (state file found, version: $PREVIOUS_SETUP_VERSION). Running update flow."
+    return
+  fi
+
+  if [[ -f "$ROOT_DIR/apps/server/.env" || -f "$ROOT_DIR/apps/web/.env.local" || -x "$SERVICE_SCRIPT" ]]; then
+    INSTALL_MODE="update"
+    log "Detected existing install artifacts. Running update flow."
+    return
+  fi
+
+  INSTALL_MODE="fresh"
+  log "No previous install detected. Running fresh install flow."
 }
 
 ensure_macos() {
@@ -70,16 +102,6 @@ brew_install_formula() {
   brew install "$formula"
 }
 
-brew_install_cask() {
-  local cask="$1"
-  if brew list --cask "$cask" >/dev/null 2>&1; then
-    return
-  fi
-
-  log "Installing $cask via Homebrew Cask..."
-  brew install --cask "$cask"
-}
-
 ensure_node() {
   if ! command_exists node || ! command_exists npm; then
     brew_install_formula node
@@ -90,8 +112,9 @@ ensure_node() {
   if [[ -z "$major" ]]; then
     fail "Unable to determine Node.js version."
   fi
+
   if (( major < 20 )); then
-    log "Upgrading Node.js to a modern version (>=20)..."
+    log "Upgrading Node.js to >=20..."
     brew upgrade node || brew install node
   fi
 }
@@ -107,19 +130,29 @@ resolve_compose_cmd() {
     return
   fi
 
-  fail "Docker Compose not found. Ensure Docker Desktop is installed and up to date."
+  fail "Docker Compose is missing even after install."
 }
 
-ensure_docker() {
+ensure_container_runtime() {
   if ! command_exists docker; then
-    brew_install_cask docker
+    brew_install_formula docker
   fi
 
-  log "Ensuring Docker Desktop is running..."
-  open -a Docker >/dev/null 2>&1 || true
+  if ! command_exists colima; then
+    brew_install_formula colima
+  fi
+
+  if ! docker compose version >/dev/null 2>&1 && ! command_exists docker-compose; then
+    brew_install_formula docker-compose
+  fi
+
+  if ! docker info >/dev/null 2>&1; then
+    log "Starting Colima runtime..."
+    colima start --cpu 2 --memory 4 --disk 40 >/dev/null 2>&1 || true
+  fi
 
   local ready=0
-  for _ in $(seq 1 90); do
+  for _ in $(seq 1 45); do
     if docker info >/dev/null 2>&1; then
       ready=1
       break
@@ -128,10 +161,21 @@ ensure_docker() {
   done
 
   if [[ "$ready" -ne 1 ]]; then
-    fail "Docker daemon is not available. Open Docker Desktop and re-run."
+    fail "Docker daemon is not available."
   fi
 
   resolve_compose_cmd >/dev/null
+}
+
+prepare_for_update() {
+  if [[ "$INSTALL_MODE" != "update" ]]; then
+    return
+  fi
+
+  if [[ -x "$SERVICE_SCRIPT" ]]; then
+    log "Stopping running Night Lobster services before update..."
+    "$SERVICE_SCRIPT" stop || true
+  fi
 }
 
 setup_env_files() {
@@ -150,14 +194,16 @@ setup_env_files() {
   fi
 }
 
-install_and_initialize() {
+install_dependencies() {
+  log "Installing npm dependencies..."
+  (cd "$ROOT_DIR" && npm install)
+}
+
+initialize_database() {
   local compose_cmd
   compose_cmd="$(resolve_compose_cmd)"
 
-  log "Installing npm dependencies..."
-  (cd "$ROOT_DIR" && npm install)
-
-  log "Starting local Postgres and Redis..."
+  log "Starting Postgres and Redis..."
   (cd "$ROOT_DIR" && $compose_cmd up -d)
 
   log "Generating Prisma client..."
@@ -167,7 +213,51 @@ install_and_initialize() {
   (cd "$ROOT_DIR" && npm run db:push -w @nightlobster/server)
 }
 
-print_next_steps() {
+install_cli_command() {
+  local target_dir
+  target_dir="$(brew --prefix)/bin"
+  if [[ ! -w "$target_dir" ]]; then
+    target_dir="$HOME/.local/bin"
+    mkdir -p "$target_dir"
+    warn "Installed CLI to $target_dir. Add it to PATH if needed."
+  fi
+
+  local target="$target_dir/nightlobster"
+  local q_script
+  q_script="$(quote "$SERVICE_SCRIPT")"
+
+  cat >"$target" <<EOF
+#!/usr/bin/env bash
+exec $q_script "\$@"
+EOF
+  chmod +x "$target"
+  log "Installed CLI command: $target"
+}
+
+start_services() {
+  chmod +x "$SERVICE_SCRIPT"
+  "$SERVICE_SCRIPT" start
+}
+
+write_install_state() {
+  local now_utc
+  now_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  local installed_at
+  installed_at="$PREVIOUS_INSTALLED_AT"
+  if [[ -z "$installed_at" ]]; then
+    installed_at="$now_utc"
+  fi
+
+  mkdir -p "$STATE_DIR"
+  cat >"$INSTALL_STATE_FILE" <<EOF
+SETUP_SCRIPT_VERSION=$CURRENT_SETUP_SCRIPT_VERSION
+INSTALLED_AT=$installed_at
+LAST_SETUP_AT=$now_utc
+LAST_SETUP_MODE=$INSTALL_MODE
+EOF
+}
+
+print_summary() {
   local key_line
   key_line="$(grep -E '^OPENAI_API_KEY=' "$ROOT_DIR/apps/server/.env" || true)"
   if [[ "$key_line" == "OPENAI_API_KEY=" ]]; then
@@ -176,27 +266,35 @@ print_next_steps() {
 
   cat <<EOF
 
-Setup complete.
+Setup complete and services are running.
+Install mode: $INSTALL_MODE
 
-Next steps:
-  1) Start server: npm run dev:server
-  2) Start web:    npm run dev:web
-  3) Start worker: npm run dev:worker
+Service commands:
+  nightlobster status
+  nightlobster stop
+  nightlobster restart
+  nightlobster logs
 
-Then open:
+Open:
   http://localhost:3000/missions
 EOF
 }
 
 main() {
   ensure_macos
+  detect_install_mode
   ensure_xcode_clt
   ensure_homebrew
   ensure_node
-  ensure_docker
+  ensure_container_runtime
+  prepare_for_update
   setup_env_files
-  install_and_initialize
-  print_next_steps
+  install_dependencies
+  initialize_database
+  install_cli_command
+  write_install_state
+  start_services
+  print_summary
 }
 
 main "$@"

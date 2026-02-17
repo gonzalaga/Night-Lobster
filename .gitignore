@@ -10,3 +10,4 @@ coverage
 *.log
 apps/server/prisma/dev.db
 artifacts/
+.nightlobster/

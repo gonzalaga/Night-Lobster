@@ -26,7 +26,18 @@ This repository contains the first implementation scaffold for the Night Lobster
 ./scripts/setup-mac.sh
 ```
 
-This script verifies/installs required dependencies on macOS (Homebrew, Node.js, Docker Desktop), bootstraps env files, starts Postgres/Redis, installs npm dependencies, and initializes Prisma.
+This script verifies/installs required dependencies on macOS (Homebrew, Node.js, Docker CLI, Colima), bootstraps env files, starts Postgres/Redis, installs npm dependencies, initializes Prisma, installs a `nightlobster` CLI command, and starts app services automatically.
+You can rerun the same script for updates; it detects prior installs, performs an update flow, and restarts services cleanly.
+
+### Service management CLI
+
+```bash
+nightlobster start
+nightlobster stop
+nightlobster restart
+nightlobster status
+nightlobster logs
+```
 
 ### Manual setup
 1. Install dependencies:
@@ -38,7 +49,7 @@ npm install
 2. Start infra:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 3. Configure env:
