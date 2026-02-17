@@ -57,19 +57,7 @@ export async function registerMorningRoutes(app: FastifyInstance): Promise<void>
       return reply.status(404).send({ error: "Run not found" });
     }
 
-    const claimLinks = await prisma.artifactEvidenceLink.findMany({
-      where: {
-        artifact: {
-          runId: params.runId
-        }
-      },
-      orderBy: { createdAt: "asc" }
-    });
-
-    return {
-      ...run,
-      claimLinks
-    };
+    return run;
   });
 
   app.post("/morning/:runId/evaluation", async (request, reply) => {

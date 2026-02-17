@@ -16,7 +16,6 @@ export default function MissionsPage() {
   const [purpose, setPurpose] = useState("Nightly autonomous product iteration with morning decisions.");
   const [objective, setObjective] = useState("Validate top onboarding hypotheses and propose next experiment.");
   const [goalLinks, setGoalLinks] = useState("goal_short_activation");
-  const [workItemLinks, setWorkItemLinks] = useState("");
   const [openQuestions, setOpenQuestions] = useState("Which checkpoint most impacts activation?");
   const [threadId, setThreadId] = useState("thr_default");
   const [state, setState] = useState<CreateState | null>(null);
@@ -51,10 +50,6 @@ export default function MissionsPage() {
             max_runtime_minutes: 120,
             write_mode: "read_write_with_documentation"
           },
-          workItemIds: workItemLinks
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
           successCriteria: [
             "At least 3 high-quality evidence sources",
             "One ranked recommendation",
@@ -83,10 +78,7 @@ export default function MissionsPage() {
           target_mode: "night_run",
           objective,
           goal_links: goalLinks.split(",").map((item) => item.trim()).filter(Boolean),
-          work_item_links: workItemLinks
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
+          work_item_links: [],
           decisions_already_made: [],
           open_questions: openQuestions
             .split("\n")
@@ -181,9 +173,6 @@ export default function MissionsPage() {
         <div className="panel">
           <label>Goal links (comma-separated)</label>
           <input value={goalLinks} onChange={(e) => setGoalLinks(e.target.value)} />
-
-          <label style={{ marginTop: "0.7rem" }}>Work item IDs (comma-separated, optional)</label>
-          <input value={workItemLinks} onChange={(e) => setWorkItemLinks(e.target.value)} />
 
           <label style={{ marginTop: "0.7rem" }}>Open questions (one per line)</label>
           <textarea value={openQuestions} onChange={(e) => setOpenQuestions(e.target.value)} />

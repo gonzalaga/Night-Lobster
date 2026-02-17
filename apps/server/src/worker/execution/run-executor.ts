@@ -299,44 +299,6 @@ async function executeStages(params: {
     }))
   });
 
-  const rankedEvidence = [...evidenceRows].sort(
-    (left, right) => (right.qualityScore ?? 0) - (left.qualityScore ?? 0)
-  );
-
-  const claimLinks: Prisma.ArtifactEvidenceLinkCreateManyInput[] = recommendations.flatMap(
-    (recommendation, recommendationIndex) => {
-      const linkedArtifact = artifacts[recommendationIndex % artifacts.length];
-      if (!linkedArtifact) {
-        return [];
-      }
-
-      return rankedEvidence.slice(0, 2).map((evidence, evidenceIndex) => ({
-        artifactId: linkedArtifact.id,
-        evidenceId: evidence.id,
-        claimId: recommendation.recommendationId,
-        supportStrength: evidenceIndex === 0 ? "strong" : "medium"
-      }));
-    }
-  );
-
-  if (claimLinks.length > 0) {
-    await prisma.artifactEvidenceLink.createMany({
-      data: claimLinks,
-      skipDuplicates: true
-    });
-  }
-
-  await recordToolInvocation({
-    runId: params.runId,
-    toolName: "provenance.link_claims",
-    requestJson: {
-      recommendation_claims: recommendations.length,
-      links_written: claimLinks.length
-    },
-    status: "ok",
-    responseRef: `trace://${params.runId}/claim-links`
-  });
-
   await recordStep({
     runId: params.runId,
     stage: "execute",

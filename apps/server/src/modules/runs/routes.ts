@@ -55,19 +55,6 @@ export async function registerRunRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ error: "Run not found" });
     }
 
-    const claimLinks = await prisma.artifactEvidenceLink.findMany({
-      where: {
-        artifact: {
-          runId: params.runId
-        }
-      },
-      include: {
-        artifact: true,
-        evidence: true
-      },
-      orderBy: { createdAt: "asc" }
-    });
-
     const timeline = [
       ...run.steps.map((step) => ({
         ts: step.timestamp,
@@ -97,7 +84,6 @@ export async function registerRunRoutes(app: FastifyInstance): Promise<void> {
       toolInvocations: run.toolInvocations,
       artifacts: run.artifacts,
       evidenceItems: run.evidenceItems,
-      claimLinks,
       timeline
     };
   });

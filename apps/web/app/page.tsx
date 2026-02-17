@@ -26,14 +26,6 @@ export default function HomePage() {
             <button className="secondary">Open Morning Review</button>
           </Link>
         </div>
-
-        <div className="panel">
-          <h2>3. Work board</h2>
-          <p>Track work items and link them to missions for continuity.</p>
-          <Link href="/workboard">
-            <button className="secondary">Open Work Board</button>
-          </Link>
-        </div>
       </div>
 
       <div className="panel" style={{ marginTop: "1rem" }}>

@@ -89,12 +89,6 @@ enum RecommendationOutcomeStatus {
   deferred
 }
 
-enum SupportStrength {
-  weak
-  medium
-  strong
-}
-
 model Project {
   id         String    @id @default(cuid())
   name       String
@@ -266,7 +260,6 @@ model Artifact {
   storageUri String
   summary    String?
   run        Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
-  evidenceLinks ArtifactEvidenceLink[]
   createdAt  DateTime @default(now())
 }
 
@@ -281,22 +274,6 @@ model EvidenceItem {
   excerpt      String?
   notes        String?
   run          Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
-  artifactLinks ArtifactEvidenceLink[]
-}
-
-model ArtifactEvidenceLink {
-  id              String          @id @default(cuid())
-  artifactId      String
-  evidenceId      String
-  claimId         String?
-  supportStrength SupportStrength @default(medium)
-  artifact        Artifact        @relation(fields: [artifactId], references: [id], onDelete: Cascade)
-  evidence        EvidenceItem    @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
-  createdAt       DateTime        @default(now())
-
-  @@index([artifactId])
-  @@index([evidenceId])
-  @@unique([artifactId, evidenceId, claimId])
 }
 
 model ToolInvocation {
