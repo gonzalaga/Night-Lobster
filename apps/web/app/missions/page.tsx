@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -11,6 +11,27 @@ type CreateState = {
   runId: string;
 };
 
+type RunStatus = "queued" | "running" | "completed" | "partial" | "failed";
+
+type RunSnapshot = {
+  status: RunStatus;
+  startedAt: string | null;
+  endedAt: string | null;
+  checkedAt: string;
+};
+
+const RUN_STATUS_COPY: Record<RunStatus, string> = {
+  queued: "Queued. Waiting for the worker to start.",
+  running: "Running. The agent is actively executing the mission.",
+  completed: "Completed. Morning Review is ready.",
+  partial: "Partially completed. Morning Review is ready with partial output.",
+  failed: "Run failed. Open Morning Review or logs to inspect details."
+};
+
+function isTerminal(status: RunStatus): boolean {
+  return status === "completed" || status === "partial" || status === "failed";
+}
+
 export default function MissionsPage() {
   const [projectName, setProjectName] = useState("Night Lobster");
   const [purpose, setPurpose] = useState("Nightly autonomous product iteration with morning decisions.");
@@ -20,12 +41,71 @@ export default function MissionsPage() {
   const [openQuestions, setOpenQuestions] = useState("Which checkpoint most impacts activation?");
   const [threadId, setThreadId] = useState("thr_default");
   const [state, setState] = useState<CreateState | null>(null);
+  const [runSnapshot, setRunSnapshot] = useState<RunSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const runId = state?.runId;
+    if (!runId) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_URL}/runs/${runId}`);
+        if (!res.ok) {
+          throw new Error("Run not available yet");
+        }
+
+        const run = (await res.json()) as {
+          status: RunStatus;
+          startedAt: string | null;
+          endedAt: string | null;
+        };
+
+        if (cancelled) {
+          return;
+        }
+
+        setRunSnapshot({
+          status: run.status,
+          startedAt: run.startedAt,
+          endedAt: run.endedAt,
+          checkedAt: new Date().toISOString()
+        });
+
+        if (!isTerminal(run.status)) {
+          timer = setTimeout(() => {
+            void poll();
+          }, 4000);
+        }
+      } catch {
+        if (!cancelled) {
+          timer = setTimeout(() => {
+            void poll();
+          }, 6000);
+        }
+      }
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [state?.runId]);
 
   async function createFlow() {
     setBusy(true);
     setError(null);
+    setRunSnapshot(null);
 
     try {
       const projectRes = await fetch(`${API_URL}/projects`, {
@@ -148,6 +228,12 @@ export default function MissionsPage() {
       }
 
       const run = await runRes.json();
+      setRunSnapshot({
+        status: "queued",
+        startedAt: null,
+        endedAt: null,
+        checkedAt: new Date().toISOString()
+      });
       setState({
         projectId: project.id,
         missionId: mission.id,
@@ -163,38 +249,58 @@ export default function MissionsPage() {
 
   return (
     <main>
-      <h1>Mission Setup</h1>
-      <p>Create a project + mission + handoff, then queue the night run.</p>
+      <h1>Set Up Tonight&apos;s Mission</h1>
+      <p>Describe what you want done overnight, queue the run, then follow progress here until Morning Review is ready.</p>
 
       <div className="grid">
         <div className="panel">
-          <label>Project name</label>
-          <input value={projectName} onChange={(e) => setProjectName(e.target.value)} />
+          <label>Project</label>
+          <input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Night Lobster" />
 
-          <label style={{ marginTop: "0.7rem" }}>Purpose</label>
-          <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} />
+          <label style={{ marginTop: "0.7rem" }}>Why this project matters</label>
+          <textarea
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            placeholder="One or two sentences about desired outcomes."
+          />
 
-          <label style={{ marginTop: "0.7rem" }}>Mission objective</label>
-          <textarea value={objective} onChange={(e) => setObjective(e.target.value)} />
+          <label style={{ marginTop: "0.7rem" }}>Tonight&apos;s objective</label>
+          <textarea
+            value={objective}
+            onChange={(e) => setObjective(e.target.value)}
+            placeholder="What should the agent accomplish tonight?"
+          />
         </div>
 
         <div className="panel">
-          <label>Goal links (comma-separated)</label>
-          <input value={goalLinks} onChange={(e) => setGoalLinks(e.target.value)} />
+          <label>Goal tags (comma-separated)</label>
+          <input
+            value={goalLinks}
+            onChange={(e) => setGoalLinks(e.target.value)}
+            placeholder="goal_short_activation, goal_medium_retention"
+          />
 
-          <label style={{ marginTop: "0.7rem" }}>Work item IDs (comma-separated, optional)</label>
-          <input value={workItemLinks} onChange={(e) => setWorkItemLinks(e.target.value)} />
+          <label style={{ marginTop: "0.7rem" }}>Related work item IDs (optional)</label>
+          <input
+            value={workItemLinks}
+            onChange={(e) => setWorkItemLinks(e.target.value)}
+            placeholder="work_xxx, work_yyy"
+          />
 
-          <label style={{ marginTop: "0.7rem" }}>Open questions (one per line)</label>
-          <textarea value={openQuestions} onChange={(e) => setOpenQuestions(e.target.value)} />
+          <label style={{ marginTop: "0.7rem" }}>Questions to answer overnight (one per line)</label>
+          <textarea
+            value={openQuestions}
+            onChange={(e) => setOpenQuestions(e.target.value)}
+            placeholder="What should we validate tonight?"
+          />
 
-          <label style={{ marginTop: "0.7rem" }}>Thread ID</label>
+          <label style={{ marginTop: "0.7rem" }}>Conversation thread ID</label>
           <input value={threadId} onChange={(e) => setThreadId(e.target.value)} />
 
-          <small>Defaults include 9pm scheduling assumptions and 120-minute runtime budget.</small>
+          <small>Defaults: 9:00 PM schedule window, 120-minute runtime, read/write with documentation policy.</small>
 
           <button style={{ marginTop: "0.9rem" }} disabled={busy} onClick={createFlow}>
-            {busy ? "Creating..." : "Create + Queue Night Run"}
+            {busy ? "Queueing..." : "Queue Night Run"}
           </button>
         </div>
       </div>
@@ -207,9 +313,40 @@ export default function MissionsPage() {
 
       {state ? (
         <div className="panel" style={{ marginTop: "1rem" }}>
-          <h2>Queued successfully</h2>
+          <h2>Run queued</h2>
           <p>Run ID: {state.runId}</p>
-          <p>Open Morning Review and load this run ID after the worker completes.</p>
+          {runSnapshot ? (
+            <>
+              <p>
+                <strong>Status:</strong> {runSnapshot.status}
+              </p>
+              <p>{RUN_STATUS_COPY[runSnapshot.status]}</p>
+              <small>Last checked: {new Date(runSnapshot.checkedAt).toLocaleTimeString()}</small>
+            </>
+          ) : (
+            <p>Checking run status...</p>
+          )}
+
+          <div style={{ marginTop: "0.9rem", display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+            <button onClick={() => window.location.assign(`/morning?runId=${encodeURIComponent(state.runId)}`)}>
+              Open Morning Review
+            </button>
+            <button
+              className="secondary"
+              onClick={() => {
+                setState(null);
+                setRunSnapshot(null);
+              }}
+            >
+              Queue Another Mission
+            </button>
+          </div>
+
+          {!runSnapshot || !isTerminal(runSnapshot.status) ? (
+            <small style={{ display: "block", marginTop: "0.8rem" }}>
+              You can open Morning Review now; if the run is still in progress, refresh in a minute.
+            </small>
+          ) : null}
         </div>
       ) : null}
     </main>

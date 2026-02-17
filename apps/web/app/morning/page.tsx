@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -49,6 +49,7 @@ type RunPayload = {
 };
 
 export default function MorningPage() {
+  const hasAutoLoadedRef = useRef(false);
   const [runId, setRunId] = useState("");
   const [data, setData] = useState<RunPayload | null>(null);
   const [replay, setReplay] = useState<any>(null);
@@ -64,14 +65,21 @@ export default function MorningPage() {
   >({});
   const [reasonByRecommendation, setReasonByRecommendation] = useState<Record<string, string>>({});
 
-  async function loadRun() {
+  async function loadRun(explicitRunId?: string) {
+    const effectiveRunId = (explicitRunId ?? runId).trim();
+    if (!effectiveRunId) {
+      setError("Run ID is required");
+      return;
+    }
+
+    setRunId(effectiveRunId);
     setBusy(true);
     setError(null);
     setData(null);
     setReplay(null);
 
     try {
-      const res = await fetch(`${API_URL}/morning/${runId}`);
+      const res = await fetch(`${API_URL}/morning/${effectiveRunId}`);
       if (!res.ok) {
         throw new Error("Run not found or not ready");
       }
@@ -105,6 +113,20 @@ export default function MorningPage() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const queryRunId = new URLSearchParams(window.location.search).get("runId")?.trim();
+    if (!queryRunId || hasAutoLoadedRef.current) {
+      return;
+    }
+
+    hasAutoLoadedRef.current = true;
+    void loadRun(queryRunId);
+  }, []);
 
   async function loadReplay() {
     if (!runId) {
@@ -174,7 +196,13 @@ export default function MorningPage() {
       <div className="panel">
         <label>Run ID</label>
         <input value={runId} onChange={(e) => setRunId(e.target.value)} placeholder="run id from mission setup" />
-        <button style={{ marginTop: "0.75rem" }} onClick={loadRun} disabled={busy || runId.length === 0}>
+        <button
+          style={{ marginTop: "0.75rem" }}
+          onClick={() => {
+            void loadRun();
+          }}
+          disabled={busy || runId.length === 0}
+        >
           {busy ? "Loading..." : "Load Run"}
         </button>
       </div>
