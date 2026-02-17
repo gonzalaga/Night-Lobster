@@ -20,6 +20,15 @@ This repository contains the first implementation scaffold for the Night Lobster
 - Policy: **read/write with documentation**
 
 ## Quick Start
+### One-command macOS setup
+
+```bash
+./scripts/setup-mac.sh
+```
+
+This script verifies/installs required dependencies on macOS (Homebrew, Node.js, Docker Desktop), bootstraps env files, starts Postgres/Redis, installs npm dependencies, and initializes Prisma.
+
+### Manual setup
 1. Install dependencies:
 
 ```bash
@@ -71,10 +80,17 @@ npm run dev:worker
 - `GET /runs/:runId/replay`
 - `GET /morning/:runId`
 - `POST /morning/:runId/evaluation`
+- `GET /work-items`
+- `POST /work-items`
+- `PATCH /work-items/:workItemId`
+- `POST /work-items/:workItemId/link-mission`
+- `GET /missions/:missionId/work-items`
+- `POST /missions/:missionId/work-items`
 - `GET /config/defaults`
 
 ## Notes
 - Worker executes a real staged flow: intake -> plan -> execute -> synthesize -> handoff.
 - Plan and synthesize stages are provider-backed via OpenAI (`OPENAI_MODEL`, default `gpt-4.1-mini`) with automatic fallback.
 - Execute stage includes repository evidence gathering, optional web URL fetch from context, artifact generation, and scoped documentation write attempts.
+- Recommendation claims are persisted with artifact-evidence links for provenance.
 - Handoff and run-report contracts are validated through `@nightlobster/contracts`.

@@ -6,6 +6,7 @@ import { registerMissionRoutes } from "./modules/missions/routes.js";
 import { registerHandoffRoutes } from "./modules/handoffs/routes.js";
 import { registerRunRoutes } from "./modules/runs/routes.js";
 import { registerMorningRoutes } from "./modules/morning/routes.js";
+import { registerWorkItemRoutes } from "./modules/work-items/routes.js";
 import { nextRunAt } from "./services/schedule.js";
 import { startNightScheduler } from "./services/night-scheduler.js";
 
@@ -47,6 +48,7 @@ await registerMissionRoutes(app);
 await registerHandoffRoutes(app);
 await registerRunRoutes(app);
 await registerMorningRoutes(app);
+await registerWorkItemRoutes(app);
 
 const stopScheduler = startNightScheduler(app.log);
 app.addHook("onClose", async () => {
